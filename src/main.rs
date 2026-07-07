@@ -1,4 +1,4 @@
-use std::{error::Error, ops::Index, process::{self, ExitCode}};
+use std::{error::Error, process::{self, ExitCode}};
 //TODO: Replace dyn Error with custom error hierachy and Into/From magic to get auto conversion
 
 fn winget_update_raw() -> Result<String, Box<dyn Error>> {
@@ -11,10 +11,12 @@ fn winget_update_raw() -> Result<String, Box<dyn Error>> {
 }
 
 
+#[derive(Debug, PartialEq, Eq)]
 enum ParsePackageSourceError {
     UnexpectedInput {input:String}
 }
 
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum PackageSource {
     ///[winget]
     WinGet,
@@ -36,6 +38,7 @@ impl TryFrom<String> for PackageSource {
 
 
 //Name                                                        Id                               Version        Available     Source
+#[derive(Debug,PartialEq, Eq, PartialOrd, Ord)]
 struct WingetUpdateOutput {
     /// [Name] Package name
     name:String,
@@ -52,18 +55,33 @@ struct WingetUpdateOutput {
 fn parse_winget_raw(s:String) -> Result<Vec<WingetUpdateOutput>, Box<dyn Error>> {
     let mut lines = s.lines();
     match lines.next() {
-        Some(headerLine) => {
+        Some(header_line) => {
             let positions =
-                parse_positions_from_header(headerLine)
+                parse_positions_from_header(header_line)
                 .ok_or("parse_positions_from_header error TODO")?;
-            let result = Vec::new();
+
+            let _ = lines.next();//skip ----------- row
+
+            let mut result = Vec::new();
             for row in lines {
+                if is_end_row(row) {break;}
+                let name_str = row.get(positions.name_offset..positions.id_offset)
+                    .unwrap_or("").trim().to_string();
+                let id_str = row.get(positions.id_offset..positions.version_offset)
+                    .unwrap_or("").trim().to_string();
+                let version_str = row.get(positions.version_offset..positions.available_offset)
+                    .unwrap_or("").trim().to_string();
+                let available_str = row.get(positions.available_offset..positions.source_offset)
+                    .unwrap_or("").trim().to_string();
+                let source_str = row.get(positions.source_offset..)
+                    .unwrap_or("").trim().to_string();
                 let entry = WingetUpdateOutput {
-                    name: todo!(),
-                    id: todo!(),
-                    version: todo!(),
-                    available: todo!(),
-                    source: todo!() };
+                    name: name_str,
+                    id: id_str,
+                    version: version_str,
+                    available: available_str,
+                    source: PackageSource::try_from(source_str)
+                        .map_err(|e| format!("Failed to parse package source {:?}", e))? };
                 result.push(entry);
             }
             Ok(result)
@@ -75,6 +93,11 @@ fn parse_winget_raw(s:String) -> Result<Vec<WingetUpdateOutput>, Box<dyn Error>>
     // trim whitespace
 }
 
+fn is_end_row(row: &str) -> bool {
+    return row.contains("upgrades available");
+}
+
+#[derive(Debug, Clone, Copy)]
 struct Positions {
     name_offset:usize,
     id_offset:usize,
@@ -84,18 +107,22 @@ struct Positions {
 }
 
 fn parse_positions_from_header(header_line: &str) -> Option<Positions> {
+    let lower = header_line.to_lowercase();
     Some(Positions {
-        name_offset: header_line.find("name")?,
-        id_offset: header_line.find("id")?,
-        version_offset: header_line.find("version")?,
-        available_offset: header_line.find("available")?,
-        source_offset: header_line.find("source")?
+        name_offset: lower.find("name")?,
+        id_offset: lower.find("id")?,
+        version_offset: lower.find("version")?,
+        available_offset: lower.find("available")?,
+        source_offset: lower.find("source")?
     })
 }
 
 fn main() -> Result<ExitCode, Box<dyn Error>> {
     println!("Starting main!");
     let utf8output = winget_update_raw()?;
-    println!("{}", utf8output);
+    let packages = parse_winget_raw(utf8output)?;
+    for package in &packages {
+        println!("{:?}", package);
+    }
     Ok(ExitCode::SUCCESS)
 }
