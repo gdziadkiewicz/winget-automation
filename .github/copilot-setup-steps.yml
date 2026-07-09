@@ -1,0 +1,9 @@
+steps:
+  - name: Install stable Rust toolchain
+    run: rustup update stable && rustup default stable
+
+  - name: Add Windows cross-compilation target
+    run: rustup target add x86_64-pc-windows-msvc
+
+  - name: Fetch Cargo dependencies
+    run: cargo fetch
