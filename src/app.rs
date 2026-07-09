@@ -35,7 +35,8 @@ mod imp {
 
     const APP_NAME: &str = "winget-automation";
     const AUTOSTART_KEY_PATH: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
-    const CHECK_INTERVAL: StdDuration = StdDuration::from_secs(60 * 60 * 4);
+    const CHECK_INTERVAL_HOURS: u64 = 4;
+    const CHECK_INTERVAL: StdDuration = StdDuration::from_secs(CHECK_INTERVAL_HOURS * 60 * 60);
     const TOAST_PACKAGE_LIMIT: usize = 3;
 
     enum AppEvent {
