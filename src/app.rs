@@ -216,7 +216,7 @@ mod imp {
 
     fn update_count_label(count: usize) -> String {
         match count {
-            1 => "1 package update is".to_string(),
+            1 => format!("{count} package update is"),
             n => format!("{n} package updates are"),
         }
     }
