@@ -1,10 +1,14 @@
+#[cfg(not(windows))]
 use std::process::ExitCode;
 
+#[cfg(not(windows))]
 use crate::error::AppError;
 
 #[cfg(not(windows))]
 pub fn run() -> Result<ExitCode, AppError> {
-    eprintln!("winget-automation runs as a Windows tray application and is not supported on this platform.");
+    eprintln!(
+        "winget-automation runs as a Windows tray application and is not supported on this platform."
+    );
     Ok(ExitCode::SUCCESS)
 }
 
@@ -19,7 +23,7 @@ mod imp {
     };
 
     use tray_item::{IconSource, TrayItem};
-    use windows_sys::Win32::UI::WindowsAndMessaging::{LoadIconW, IDI_APPLICATION};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{IDI_APPLICATION, LoadIconW};
     use winreg::{RegKey, enums::HKEY_CURRENT_USER};
     use winrt_notification::{Duration as ToastDuration, Sound, Toast};
 
@@ -64,12 +68,15 @@ mod imp {
         let worker = spawn_worker(event_tx.clone(), worker_rx);
 
         let mut tray = build_tray(event_tx)?;
-        let status_id = tray.inner_mut().add_label_with_id("Status: checking for updates...")?;
+        let status_id = tray
+            .inner_mut()
+            .add_label_with_id("Status: checking for updates...")?;
 
         loop {
             match event_rx.recv().map_err(|_| AppError::EventChannelClosed)? {
                 AppEvent::CheckNow => {
-                    tray.inner_mut().set_label("Status: checking for updates...", status_id)?;
+                    tray.inner_mut()
+                        .set_label("Status: checking for updates...", status_id)?;
                     tray.set_icon(default_icon()?)?;
                     let _ = worker_tx.send(WorkerCommand::CheckNow);
                 }
@@ -113,20 +120,32 @@ mod imp {
     fn ensure_autostart() -> Result<(), AppError> {
         let executable = env::current_exe().map_err(AppError::CurrentExecutable)?;
         let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-        let (run_key, _) = hkcu.create_subkey(AUTOSTART_KEY_PATH).map_err(AppError::Autostart)?;
+        let (run_key, _) = hkcu
+            .create_subkey(AUTOSTART_KEY_PATH)
+            .map_err(AppError::Autostart)?;
         run_key
             .set_value(APP_NAME, &format!("\"{}\"", executable.display()))
             .map_err(AppError::Autostart)?;
         Ok(())
     }
 
-    fn spawn_worker(event_tx: Sender<AppEvent>, command_rx: Receiver<WorkerCommand>) -> JoinHandle<()> {
+    fn spawn_worker(
+        event_tx: Sender<AppEvent>,
+        command_rx: Receiver<WorkerCommand>,
+    ) -> JoinHandle<()> {
         thread::spawn(move || {
             let mut next_trigger = CheckTrigger::Startup;
 
             loop {
-                let result = winget_update_raw().and_then(|raw| parse_winget_raw(&raw).map_err(Into::into));
-                if event_tx.send(AppEvent::Report(CheckReport { trigger: next_trigger, result })).is_err() {
+                let result =
+                    winget_update_raw().and_then(|raw| parse_winget_raw(&raw).map_err(Into::into));
+                if event_tx
+                    .send(AppEvent::Report(CheckReport {
+                        trigger: next_trigger,
+                        result,
+                    }))
+                    .is_err()
+                {
                     break;
                 }
 
@@ -142,7 +161,8 @@ mod imp {
     fn handle_report(tray: &mut TrayItem, report: &CheckReport) -> Result<String, AppError> {
         match &report.result {
             Ok(packages) if packages.is_empty() => {
-                tray.set_tooltip("winget-automation: no package updates available")?;
+                tray.inner_mut()
+                    .set_tooltip("winget-automation: no package updates available")?;
                 if matches!(report.trigger, CheckTrigger::Manual) {
                     show_toast(
                         "No package updates available",
@@ -156,19 +176,27 @@ mod imp {
                 let title = format!("{} available", update_count_label(packages.len()));
                 let line1 = summarize_packages(packages);
                 let line2 = if packages.len() > TOAST_PACKAGE_LIMIT {
-                    format!("and {} more package(s)", packages.len() - TOAST_PACKAGE_LIMIT)
+                    format!(
+                        "and {} more package(s)",
+                        packages.len() - TOAST_PACKAGE_LIMIT
+                    )
                 } else {
                     "Use winget upgrade to install the latest versions.".to_string()
                 };
-                tray.set_tooltip(&format!("winget-automation: {}", title))?;
+                tray.inner_mut()
+                    .set_tooltip(&format!("winget-automation: {}", title))?;
                 show_toast(&title, &line1, &line2)?;
                 Ok(format!("Status: {}", title))
             }
             Err(error) => {
                 let status = format!("Status: last check failed ({error})");
-                tray.set_tooltip(&status)?;
+                tray.inner_mut().set_tooltip(&status)?;
                 if matches!(report.trigger, CheckTrigger::Manual) {
-                    show_toast("Package check failed", &error.to_string(), "See the tray menu for the latest status.")?;
+                    show_toast(
+                        "Package check failed",
+                        &error.to_string(),
+                        "See the tray menu for the latest status.",
+                    )?;
                 }
                 Ok(status)
             }
