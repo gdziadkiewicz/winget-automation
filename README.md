@@ -9,10 +9,10 @@ A Windows system-tray application written in Rust that automatically detects out
 | Invoke `winget upgrade` and capture output | ✅ Implemented |
 | Parse the fixed-width table into typed structs | ✅ Implemented |
 | Typed error hierarchy (`WingetError`, `ParseWingetError`) | ✅ Implemented |
-| Windows system-tray icon | 🔜 Planned |
-| Balloon / toast notification | 🔜 Planned |
-| Periodic update check (configurable interval) | 🔜 Planned |
-| Autostart via `HKCU\…\Run` registry key | 🔜 Planned |
+| Windows system-tray icon | ✅ Implemented with `tray-item` |
+| Balloon / toast notification | ✅ Implemented with WinRT toast notifications |
+| Periodic update check | ✅ Implemented (every 4 hours, plus manual refresh) |
+| Autostart via `HKCU\…\Run` registry key | ✅ Implemented |
 
 ## Requirements
 
@@ -42,13 +42,23 @@ cargo test
 
 ```
 src/
-  main.rs      — entry point: runs winget, parses output, prints results
+  main.rs      — entry point: starts the platform-specific application runner
+  app.rs       — Windows tray application + scheduling + notifications + autostart
   lib.rs       — re-exports the public modules
   error.rs     — typed error hierarchy (WingetError, ParseWingetError, …)
   parser.rs    — fixed-width table parser + WingetUpdateOutput / PackageSource types
   process.rs   — winget process invocation
 Cargo.toml     — package manifest and dependencies
 ```
+
+## Runtime behavior
+
+On Windows, launching the binary:
+
+- registers the current executable under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
+- creates a tray icon with **Check now** and **Quit** menu actions
+- runs `winget upgrade` immediately and then every 4 hours
+- shows a Windows toast when updates are found, or when a manual check completes with no updates
 
 ## Parser notes
 
