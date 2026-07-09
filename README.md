@@ -1,6 +1,65 @@
 # winget-automation
-TODO
 
+A Windows system-tray application written in Rust that automatically detects outdated packages managed by [winget](https://learn.microsoft.com/en-us/windows/package-manager/winget/) and surfaces them as a notification.
+
+## Features
+
+| Feature | Status |
+|---|---|
+| Invoke `winget upgrade` and capture output | ✅ Implemented |
+| Parse the fixed-width table into typed structs | ✅ Implemented |
+| Typed error hierarchy (`WingetError`, `ParseWingetError`) | ✅ Implemented |
+| Windows system-tray icon | 🔜 Planned |
+| Balloon / toast notification | 🔜 Planned |
+| Periodic update check (configurable interval) | 🔜 Planned |
+| Autostart via `HKCU\…\Run` registry key | 🔜 Planned |
+
+## Requirements
+
+- Windows 10 or 11
+- [winget](https://learn.microsoft.com/en-us/windows/package-manager/winget/) installed (comes with the App Installer from the Microsoft Store)
+- Rust toolchain targeting `x86_64-pc-windows-msvc`
+
+## Building
+
+```bash
+# Debug build
+cargo build
+
+# Release build for Windows
+cargo build --release --target x86_64-pc-windows-msvc
+```
+
+## Running tests
+
+Parser and process-level unit tests can run on any platform:
+
+```bash
+cargo test
+```
+
+## Repository layout
+
+```
+src/
+  main.rs      — entry point: runs winget, parses output, prints results
+  lib.rs       — re-exports the public modules
+  error.rs     — typed error hierarchy (WingetError, ParseWingetError, …)
+  parser.rs    — fixed-width table parser + WingetUpdateOutput / PackageSource types
+  process.rs   — winget process invocation
+Cargo.toml     — package manifest and dependencies
+```
+
+## Parser notes
+
+`winget upgrade` prints a fixed-width table whose column offsets are determined by the
+position of each header word in the header line.  The parser locates those offsets and
+slices each data row accordingly.  The summary line (`"N upgrades available."`) acts as
+a sentinel to stop parsing.
+
+### Sample `winget upgrade` output
+
+```
 Name                                                        Id                               Version        Available     Source
 ---------------------------------------------------------------------------------------------------------------------------------
 7-Zip 26.01 (x64)                                           7zip.7zip                        26.01          26.02         winget
@@ -23,4 +82,9 @@ Visual Studio Community 2026                                Microsoft.VisualStud
 Wacom Tablet                                                Wacom.WacomTabletDriver          6.4.12-3       6.4.13-4      winget
 Windows Subsystem for Linux                                 Microsoft.WSL                    2.7.8.0        2.7.10        winget
 Zed                                                         ZedIndustries.Zed                1.7.2          1.9.0         winget
+20 upgrades available.
+```
 
+## License
+
+See [LICENSE](LICENSE).
