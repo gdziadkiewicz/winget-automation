@@ -30,7 +30,9 @@ impl TryFrom<String> for PackageSource {
         match value.as_str() {
             "winget" => Ok(PackageSource::WinGet),
             "msstore" => Ok(PackageSource::MsStore),
-            rest => Err(ParsePackageSourceError { input: rest.to_string() }),
+            rest => Err(ParsePackageSourceError {
+                input: rest.to_string(),
+            }),
         }
     }
 }
@@ -76,13 +78,39 @@ pub fn parse_winget_raw(s: &str) -> Result<Vec<WingetUpdateOutput>, ParseWingetE
         if is_end_row(row) {
             break;
         }
-        let name = row.get(positions.name_offset..positions.id_offset).unwrap_or("").trim().to_string();
-        let id = row.get(positions.id_offset..positions.version_offset).unwrap_or("").trim().to_string();
-        let version = row.get(positions.version_offset..positions.available_offset).unwrap_or("").trim().to_string();
-        let available = row.get(positions.available_offset..positions.source_offset).unwrap_or("").trim().to_string();
-        let source_str = row.get(positions.source_offset..).unwrap_or("").trim().to_string();
+        let name = row
+            .get(positions.name_offset..positions.id_offset)
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        let id = row
+            .get(positions.id_offset..positions.version_offset)
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        let version = row
+            .get(positions.version_offset..positions.available_offset)
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        let available = row
+            .get(positions.available_offset..positions.source_offset)
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        let source_str = row
+            .get(positions.source_offset..)
+            .unwrap_or("")
+            .trim()
+            .to_string();
         let source = PackageSource::try_from(source_str)?;
-        result.push(WingetUpdateOutput { name, id, version, available, source });
+        result.push(WingetUpdateOutput {
+            name,
+            id,
+            version,
+            available,
+            source,
+        });
     }
     Ok(result)
 }
@@ -122,13 +150,21 @@ Oh My Posh                                                  XP8K0HKJFRXGCK      
     fn test_is_end_row() {
         assert!(is_end_row("20 upgrades available."));
         assert!(is_end_row("1 upgrades available."));
-        assert!(!is_end_row("7-Zip 26.01 (x64)  7zip.7zip  26.01  26.02  winget"));
+        assert!(!is_end_row(
+            "7-Zip 26.01 (x64)  7zip.7zip  26.01  26.02  winget"
+        ));
     }
 
     #[test]
     fn test_package_source_try_from() {
-        assert_eq!(PackageSource::try_from("winget".to_string()), Ok(PackageSource::WinGet));
-        assert_eq!(PackageSource::try_from("msstore".to_string()), Ok(PackageSource::MsStore));
+        assert_eq!(
+            PackageSource::try_from("winget".to_string()),
+            Ok(PackageSource::WinGet)
+        );
+        assert_eq!(
+            PackageSource::try_from("msstore".to_string()),
+            Ok(PackageSource::MsStore)
+        );
         assert!(PackageSource::try_from("unknown".to_string()).is_err());
     }
 

@@ -1,6 +1,39 @@
 use thiserror::Error;
 
 #[derive(Debug, Error)]
+pub enum AppError {
+    #[error(transparent)]
+    Winget(#[from] WingetError),
+
+    #[cfg(windows)]
+    #[error("failed to create or update the tray icon: {0}")]
+    Tray(#[from] tray_item::TIError),
+
+    #[cfg(windows)]
+    #[error("failed to show a Windows toast notification: {0}")]
+    Notification(#[from] winrt_notification::Error),
+
+    #[cfg(windows)]
+    #[error("failed to resolve the current executable path: {0}")]
+    CurrentExecutable(std::io::Error),
+
+    #[cfg(windows)]
+    #[error("failed to register the application for autostart: {0}")]
+    Autostart(std::io::Error),
+
+    #[cfg(windows)]
+    #[error("failed to load a default Windows tray icon")]
+    WindowsIconUnavailable,
+
+    #[cfg(windows)]
+    #[error("background worker thread panicked")]
+    WorkerPanicked,
+
+    #[error("application event channel closed unexpectedly")]
+    EventChannelClosed,
+}
+
+#[derive(Debug, Error)]
 pub enum WingetError {
     #[error("failed to run winget process: {0}")]
     Process(#[from] std::io::Error),
