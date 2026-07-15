@@ -22,7 +22,7 @@ pub enum AppError {
     Autostart(std::io::Error),
 
     #[cfg(windows)]
-    #[error("failed to load a default Windows tray icon")]
+    #[error("failed to load the embedded Windows tray icon")]
     WindowsIconUnavailable,
 
     #[cfg(windows)]
@@ -37,6 +37,9 @@ pub enum AppError {
 pub enum WingetError {
     #[error("failed to run winget process: {0}")]
     Process(#[from] std::io::Error),
+
+    #[error("winget exited unsuccessfully (code {code:?}): {stderr}")]
+    CommandFailed { code: Option<i32>, stderr: String },
 
     #[error("winget output is not valid UTF-8: {0}")]
     Utf8(#[from] std::string::FromUtf8Error),

@@ -13,6 +13,7 @@ A Windows system-tray application written in Rust that automatically detects out
 | Balloon / toast notification | ✅ Implemented with WinRT toast notifications |
 | Periodic update check | ✅ Implemented (every 4 hours, plus manual refresh) |
 | Autostart via `HKCU\…\Run` registry key | ✅ Implemented |
+| Per-user installer and uninstaller | ✅ Implemented with Inno Setup |
 
 ## Requirements
 
@@ -29,6 +30,19 @@ cargo build
 # Release build for Windows
 cargo build --release --target x86_64-pc-windows-msvc
 ```
+
+## Installing
+
+Release installers are written to `target/installer/`. To build one locally, install
+[Inno Setup 6](https://jrsoftware.org/isinfo.php), then run:
+
+```powershell
+.\installer\build.ps1
+```
+
+The per-user installer adds **WinGet Update Monitor** to the Start Menu and starts it
+with Windows. Uninstall it from Windows **Installed apps**; removal stops the tray
+process and deletes its autostart entry.
 
 ## Running tests
 
@@ -48,6 +62,8 @@ src/
   error.rs     — typed error hierarchy (WingetError, ParseWingetError, …)
   parser.rs    — fixed-width table parser + WingetUpdateOutput / PackageSource types
   process.rs   — winget process invocation
+assets/        — tray and installer icons
+installer/     — Inno Setup definition and local build script
 Cargo.toml     — package manifest and dependencies
 ```
 

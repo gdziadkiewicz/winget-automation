@@ -58,18 +58,19 @@ fn parse_positions_from_header(header_line: &str) -> Option<Positions> {
 }
 
 fn is_end_row(row: &str) -> bool {
-    row.contains("upgrades available")
+    row.to_ascii_lowercase().contains("upgrades available")
 }
 
 pub fn parse_winget_raw(s: &str) -> Result<Vec<WingetUpdateOutput>, ParseWingetError> {
-    let mut lines = s.lines();
-    let header_line = match lines.next() {
-        Some(line) => line,
-        None => return Ok(Vec::new()),
-    };
+    if s.trim().is_empty() || indicates_no_updates(s) {
+        return Ok(Vec::new());
+    }
 
-    let positions =
-        parse_positions_from_header(header_line).ok_or(ParseWingetError::HeaderParseFailed)?;
+    // winget may print progress, source, or agreement messages before its table.
+    let mut lines = s.lines();
+    let positions = lines
+        .find_map(parse_positions_from_header)
+        .ok_or(ParseWingetError::HeaderParseFailed)?;
 
     let _ = lines.next(); // skip -------- separator row
 
@@ -78,31 +79,17 @@ pub fn parse_winget_raw(s: &str) -> Result<Vec<WingetUpdateOutput>, ParseWingetE
         if is_end_row(row) {
             break;
         }
-        let name = row
-            .get(positions.name_offset..positions.id_offset)
-            .unwrap_or("")
-            .trim()
-            .to_string();
-        let id = row
-            .get(positions.id_offset..positions.version_offset)
-            .unwrap_or("")
-            .trim()
-            .to_string();
-        let version = row
-            .get(positions.version_offset..positions.available_offset)
-            .unwrap_or("")
-            .trim()
-            .to_string();
-        let available = row
-            .get(positions.available_offset..positions.source_offset)
-            .unwrap_or("")
-            .trim()
-            .to_string();
-        let source_str = row
-            .get(positions.source_offset..)
-            .unwrap_or("")
-            .trim()
-            .to_string();
+        if row.trim().is_empty() {
+            continue;
+        }
+
+        // Header offsets describe terminal columns, not UTF-8 byte indexes. Slicing by
+        // characters keeps later fields aligned when a package name contains accents.
+        let name = char_slice(row, positions.name_offset, positions.id_offset);
+        let id = char_slice(row, positions.id_offset, positions.version_offset);
+        let version = char_slice(row, positions.version_offset, positions.available_offset);
+        let available = char_slice(row, positions.available_offset, positions.source_offset);
+        let source_str = char_slice(row, positions.source_offset, usize::MAX);
         let source = PackageSource::try_from(source_str)?;
         result.push(WingetUpdateOutput {
             name,
@@ -113,6 +100,22 @@ pub fn parse_winget_raw(s: &str) -> Result<Vec<WingetUpdateOutput>, ParseWingetE
         });
     }
     Ok(result)
+}
+
+fn char_slice(value: &str, start: usize, end: usize) -> String {
+    value
+        .chars()
+        .skip(start)
+        .take(end.saturating_sub(start))
+        .collect::<String>()
+        .trim()
+        .to_string()
+}
+
+fn indicates_no_updates(output: &str) -> bool {
+    let lower = output.to_ascii_lowercase();
+    lower.contains("no applicable upgrade found")
+        || lower.contains("no installed package found matching input criteria")
 }
 
 #[cfg(test)]
@@ -207,5 +210,29 @@ Name                                                        Id                  
 1 upgrades available.";
         let result = parse_winget_raw(input);
         assert!(matches!(result, Err(ParseWingetError::InvalidSource(_))));
+    }
+
+    #[test]
+    fn test_parse_winget_raw_allows_preamble_and_unicode() {
+        let input = "\
+Searching for upgrades...\n\
+Name             Id          Version  Available  Source\n\
+-------------------------------------------------------\n\
+Żółty program    Example.App 1.0      2.0        winget\n\
+1 upgrades available.";
+
+        let result = parse_winget_raw(input).unwrap();
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].name, "Żółty program");
+        assert_eq!(result[0].id, "Example.App");
+        assert_eq!(result[0].version, "1.0");
+        assert_eq!(result[0].available, "2.0");
+    }
+
+    #[test]
+    fn test_parse_winget_raw_no_applicable_updates() {
+        let result = parse_winget_raw("No applicable upgrade found.").unwrap();
+        assert!(result.is_empty());
     }
 }

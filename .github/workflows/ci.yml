@@ -56,8 +56,21 @@ jobs:
       - name: Build release binary
         run: cargo build --release --target x86_64-pc-windows-msvc
 
+      - name: Install Inno Setup
+        run: choco install innosetup --yes --no-progress
+
+      - name: Build Windows installer
+        shell: pwsh
+        run: .\installer\build.ps1
+
       - name: Upload release binary
         uses: actions/upload-artifact@v7
         with:
           name: winget-automation-windows
           path: target/x86_64-pc-windows-msvc/release/winget-automation.exe
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: winget-update-monitor-installer
+          path: target/installer/*-Setup.exe
