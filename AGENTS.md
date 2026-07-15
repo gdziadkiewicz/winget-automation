@@ -9,9 +9,11 @@ This is a Rust 2024 Windows tray application. Keep the entry point small in `src
 - `src/parser.rs`: fixed-width output parsing and package data types.
 - `src/error.rs`: typed application, process, and parsing errors.
 - `.github/workflows/ci.yml`: Linux tests and Windows release build.
+- `assets/`: branded tray and installer icons.
+- `installer/`: Inno Setup definition and PowerShell build helper.
 - `README.md`: supported behavior and representative `winget upgrade` output.
 
-Unit tests live beside their implementation in `#[cfg(test)]` modules. There is currently no separate assets directory.
+Unit tests live beside their implementation in `#[cfg(test)]` modules.
 
 ## Build, Test, and Development Commands
 
@@ -21,6 +23,7 @@ Unit tests live beside their implementation in `#[cfg(test)]` modules. There is 
 - `cargo fmt --all -- --check`: verify standard Rust formatting without modifying files.
 - `cargo clippy --all-targets --all-features -- -D warnings`: reject lint warnings.
 - `cargo run`: launch the application; meaningful tray behavior requires Windows and an installed `winget`.
+- `.\installer\build.ps1`: build the release binary and per-user installer; requires Inno Setup 6.
 
 Before submitting changes, run formatting, tests, Clippy, and an appropriate build.
 

@@ -22,7 +22,7 @@ pub enum AppError {
     Autostart(std::io::Error),
 
     #[cfg(windows)]
-    #[error("failed to load a default Windows tray icon")]
+    #[error("failed to load the embedded Windows tray icon")]
     WindowsIconUnavailable,
 
     #[cfg(windows)]

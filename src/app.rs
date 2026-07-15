@@ -23,7 +23,7 @@ mod imp {
     };
 
     use tray_item::{IconSource, TrayItem};
-    use windows_sys::Win32::UI::WindowsAndMessaging::{IDI_APPLICATION, LoadIconW};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{CreateIconFromResourceEx, LR_DEFAULTCOLOR};
     use winreg::{RegKey, enums::HKEY_CURRENT_USER};
     use winrt_notification::{Duration as ToastDuration, Sound, Toast};
 
@@ -33,11 +33,14 @@ mod imp {
         process::winget_update_raw,
     };
 
-    const APP_NAME: &str = "winget-automation";
+    const APP_NAME: &str = "WinGet Update Monitor";
+    const APP_USER_MODEL_ID: &str = "gdziadkiewicz.WinGetUpdateMonitor";
+    const AUTOSTART_VALUE_NAME: &str = "winget-automation";
     const AUTOSTART_KEY_PATH: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
     const CHECK_INTERVAL_HOURS: u64 = 4;
     const CHECK_INTERVAL: StdDuration = StdDuration::from_secs(CHECK_INTERVAL_HOURS * 60 * 60);
     const TOAST_PACKAGE_LIMIT: usize = 3;
+    const TRAY_ICON_PNG: &[u8] = include_bytes!("../assets/tray-icon.png");
 
     enum AppEvent {
         CheckNow,
@@ -68,16 +71,13 @@ mod imp {
         let (worker_tx, worker_rx) = mpsc::channel();
         let worker = spawn_worker(event_tx.clone(), worker_rx);
 
-        let mut tray = build_tray(event_tx)?;
-        let status_id = tray
-            .inner_mut()
-            .add_label_with_id("Status: checking for updates...")?;
+        let (mut tray, status_id) = build_tray(event_tx)?;
 
         loop {
             match event_rx.recv().map_err(|_| AppError::EventChannelClosed)? {
                 AppEvent::CheckNow => {
                     tray.inner_mut()
-                        .set_label("Status: checking for updates...", status_id)?;
+                        .set_label("Checking for updates…", status_id)?;
                     tray.set_icon(default_icon()?)?;
                     let _ = worker_tx.send(WorkerCommand::CheckNow);
                 }
@@ -96,22 +96,37 @@ mod imp {
         Ok(ExitCode::SUCCESS)
     }
 
-    fn build_tray(event_tx: Sender<AppEvent>) -> Result<TrayItem, AppError> {
+    fn build_tray(event_tx: Sender<AppEvent>) -> Result<(TrayItem, u32), AppError> {
         let mut tray = TrayItem::new(APP_NAME, default_icon()?)?;
-        tray.add_menu_item("Check now", {
+        let status_id = tray
+            .inner_mut()
+            .add_label_with_id("Checking for updates…")?;
+        tray.inner_mut().add_separator()?;
+        tray.add_menu_item("Check for updates now", {
             let event_tx = event_tx.clone();
             move || {
                 let _ = event_tx.send(AppEvent::CheckNow);
             }
         })?;
-        tray.add_menu_item("Quit", move || {
+        tray.inner_mut().add_separator()?;
+        tray.add_menu_item("Exit", move || {
             let _ = event_tx.send(AppEvent::Quit);
         })?;
-        Ok(tray)
+        Ok((tray, status_id))
     }
 
     fn default_icon() -> Result<IconSource, AppError> {
-        let icon = unsafe { LoadIconW(0, IDI_APPLICATION) };
+        let icon = unsafe {
+            CreateIconFromResourceEx(
+                TRAY_ICON_PNG.as_ptr(),
+                TRAY_ICON_PNG.len() as u32,
+                1,
+                0x0003_0000,
+                0,
+                0,
+                LR_DEFAULTCOLOR,
+            )
+        };
         if icon == 0 {
             return Err(AppError::WindowsIconUnavailable);
         }
@@ -125,7 +140,10 @@ mod imp {
             .create_subkey(AUTOSTART_KEY_PATH)
             .map_err(AppError::Autostart)?;
         run_key
-            .set_value(APP_NAME, &format!("\"{}\"", executable.display()))
+            .set_value(
+                AUTOSTART_VALUE_NAME,
+                &format!("\"{}\"", executable.display()),
+            )
             .map_err(AppError::Autostart)?;
         Ok(())
     }
@@ -163,40 +181,38 @@ mod imp {
         match &report.result {
             Ok(packages) if packages.is_empty() => {
                 tray.inner_mut()
-                    .set_tooltip("winget-automation: no package updates available")?;
+                    .set_tooltip("WinGet Update Monitor — you're up to date")?;
                 if matches!(report.trigger, CheckTrigger::Manual) {
                     show_toast(
-                        "No package updates available",
-                        "winget did not report any outdated packages.",
-                        "winget-automation will keep checking in the background.",
+                        "You're up to date",
+                        "No package updates were found.",
+                        "We'll check again automatically in 4 hours.",
                     )?;
                 }
-                Ok("Status: up to date".to_string())
+                Ok("Up to date".to_string())
             }
             Ok(packages) => {
-                let title = format!("{} available", update_count_label(packages.len()));
+                let title = update_count_label(packages.len());
                 let line1 = summarize_packages(packages);
                 let line2 = if packages.len() > TOAST_PACKAGE_LIMIT {
-                    format!(
-                        "and {} more package(s)",
-                        packages.len() - TOAST_PACKAGE_LIMIT
-                    )
+                    format!("Plus {} more", packages.len() - TOAST_PACKAGE_LIMIT)
                 } else {
-                    "Use winget upgrade to install the latest versions.".to_string()
+                    "Run winget upgrade to install them.".to_string()
                 };
                 tray.inner_mut()
-                    .set_tooltip(&format!("winget-automation: {}", title))?;
+                    .set_tooltip(&format!("WinGet Update Monitor — {title}"))?;
                 show_toast(&title, &line1, &line2)?;
-                Ok(format!("Status: {}", title))
+                Ok(title)
             }
             Err(error) => {
-                let status = format!("Status: last check failed ({error})");
-                tray.inner_mut().set_tooltip(&status)?;
+                let status = "Last check failed".to_string();
+                tray.inner_mut()
+                    .set_tooltip("WinGet Update Monitor — last check failed")?;
                 if matches!(report.trigger, CheckTrigger::Manual) {
                     show_toast(
-                        "Package check failed",
+                        "Update check failed",
                         &error.to_string(),
-                        "See the tray menu for the latest status.",
+                        "Check your connection and try again.",
                     )?;
                 }
                 Ok(status)
@@ -205,20 +221,28 @@ mod imp {
     }
 
     fn show_toast(title: &str, line1: &str, line2: &str) -> Result<(), AppError> {
-        Toast::new(Toast::POWERSHELL_APP_ID)
+        if toast(APP_USER_MODEL_ID, title, line1, line2)
+            .show()
+            .is_err()
+        {
+            toast(Toast::POWERSHELL_APP_ID, title, line1, line2).show()?;
+        }
+        Ok(())
+    }
+
+    fn toast(app_id: &str, title: &str, line1: &str, line2: &str) -> Toast {
+        Toast::new(app_id)
             .title(title)
             .text1(line1)
             .text2(line2)
             .duration(ToastDuration::Short)
             .sound(Some(Sound::Default))
-            .show()?;
-        Ok(())
     }
 
     fn update_count_label(count: usize) -> String {
         match count {
-            1 => format!("{count} package update is"),
-            n => format!("{n} package updates are"),
+            1 => "1 app update available".to_string(),
+            n => format!("{n} app updates available"),
         }
     }
 
@@ -229,6 +253,26 @@ mod imp {
             .map(|package| package.name.as_str())
             .collect::<Vec<_>>()
             .join(", ")
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn embedded_tray_icon_is_valid() {
+            let IconSource::RawIcon(icon) = default_icon().expect("icon should load") else {
+                panic!("expected an embedded raw icon");
+            };
+            assert_ne!(icon, 0);
+            unsafe { windows_sys::Win32::UI::WindowsAndMessaging::DestroyIcon(icon) };
+        }
+
+        #[test]
+        fn update_count_labels_are_natural() {
+            assert_eq!(update_count_label(1), "1 app update available");
+            assert_eq!(update_count_label(4), "4 app updates available");
+        }
     }
 }
 
