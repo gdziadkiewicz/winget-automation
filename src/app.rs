@@ -23,13 +23,15 @@ mod imp {
     };
 
     use tray_item::{IconSource, TrayItem};
-    use windows_sys::Win32::UI::WindowsAndMessaging::{CreateIconFromResourceEx, LR_DEFAULTCOLOR};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        CreateIconFromResourceEx, LR_DEFAULTCOLOR, MB_ICONINFORMATION, MB_OK, MessageBoxW,
+    };
     use winreg::{RegKey, enums::HKEY_CURRENT_USER};
     use winrt_notification::{Duration as ToastDuration, Sound, Toast};
 
     use crate::{
         error::{AppError, WingetError},
-        parser::{WingetUpdateOutput, parse_winget_raw},
+        parser::{PackageSource, WingetUpdateOutput, parse_winget_raw},
         process::winget_update_raw,
     };
 
@@ -44,6 +46,7 @@ mod imp {
 
     enum AppEvent {
         CheckNow,
+        ShowUpdates,
         Quit,
         Report(CheckReport),
     }
@@ -72,6 +75,7 @@ mod imp {
         let worker = spawn_worker(event_tx.clone(), worker_rx);
 
         let (mut tray, status_id) = build_tray(event_tx)?;
+        let mut latest_updates = Vec::new();
 
         loop {
             match event_rx.recv().map_err(|_| AppError::EventChannelClosed)? {
@@ -81,12 +85,19 @@ mod imp {
                     tray.set_icon(default_icon()?)?;
                     let _ = worker_tx.send(WorkerCommand::CheckNow);
                 }
+                AppEvent::ShowUpdates => {
+                    show_updates_window(&latest_updates)?;
+                }
                 AppEvent::Quit => {
                     let _ = worker_tx.send(WorkerCommand::Quit);
                     break;
                 }
                 AppEvent::Report(report) => {
                     let status = handle_report(&mut tray, &report)?;
+                    latest_updates = report
+                        .result
+                        .as_ref()
+                        .map_or_else(|_| Vec::new(), Clone::clone);
                     tray.inner_mut().set_label(&status, status_id)?;
                 }
             }
@@ -102,6 +113,12 @@ mod imp {
             .inner_mut()
             .add_label_with_id("Checking for updates…")?;
         tray.inner_mut().add_separator()?;
+        tray.add_menu_item("Show available updates", {
+            let event_tx = event_tx.clone();
+            move || {
+                let _ = event_tx.send(AppEvent::ShowUpdates);
+            }
+        })?;
         tray.add_menu_item("Check for updates now", {
             let event_tx = event_tx.clone();
             move || {
@@ -197,7 +214,7 @@ mod imp {
                 let line2 = if packages.len() > TOAST_PACKAGE_LIMIT {
                     format!("Plus {} more", packages.len() - TOAST_PACKAGE_LIMIT)
                 } else {
-                    "Run winget upgrade to install them.".to_string()
+                    "Right-click the tray icon to view details.".to_string()
                 };
                 tray.inner_mut()
                     .set_tooltip(&format!("WinGet Update Monitor — {title}"))?;
@@ -218,6 +235,42 @@ mod imp {
                 Ok(status)
             }
         }
+    }
+
+    fn show_updates_window(packages: &[WingetUpdateOutput]) -> Result<(), AppError> {
+        let body = update_window_body(packages);
+        let title = to_wide(APP_NAME);
+        let body = to_wide(&body);
+        unsafe {
+            MessageBoxW(0, body.as_ptr(), title.as_ptr(), MB_OK | MB_ICONINFORMATION);
+        }
+        Ok(())
+    }
+
+    fn update_window_body(packages: &[WingetUpdateOutput]) -> String {
+        if packages.is_empty() {
+            return "No package updates are currently available. Use Check for updates now to refresh."
+                .to_string();
+        }
+
+        let mut lines = vec![update_count_label(packages.len()), String::new()];
+        lines.extend(packages.iter().map(|package| {
+            format!(
+                "{}\n  {}: {} -> {} ({})",
+                package.name,
+                package.id,
+                package.version,
+                package.available,
+                package.source.as_str()
+            )
+        }));
+        lines.push(String::new());
+        lines.push("Run winget upgrade in a terminal to install these updates.".to_string());
+        lines.join("\n")
+    }
+
+    fn to_wide(value: &str) -> Vec<u16> {
+        value.encode_utf16().chain(std::iter::once(0)).collect()
     }
 
     fn show_toast(title: &str, line1: &str, line2: &str) -> Result<(), AppError> {
@@ -253,6 +306,15 @@ mod imp {
             .map(|package| package.name.as_str())
             .collect::<Vec<_>>()
             .join(", ")
+    }
+
+    impl PackageSource {
+        fn as_str(&self) -> &'static str {
+            match self {
+                PackageSource::WinGet => "winget",
+                PackageSource::MsStore => "msstore",
+            }
+        }
     }
 
     #[cfg(test)]

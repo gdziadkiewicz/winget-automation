@@ -1,7 +1,7 @@
 use crate::error::{ParsePackageSourceError, ParseWingetError};
 
 /// A single row parsed from `winget upgrade` tabular output.
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct WingetUpdateOutput {
     /// Display name of the package (the "Name" column).
     pub name: String,
@@ -15,7 +15,7 @@ pub struct WingetUpdateOutput {
     pub source: PackageSource,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PackageSource {
     /// [winget]
     WinGet,
